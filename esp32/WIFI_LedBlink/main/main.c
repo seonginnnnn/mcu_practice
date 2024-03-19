@@ -59,7 +59,8 @@ char off_resp[] = "<!DOCTYPE html>\n"
 
 static const char *TAG = "espressif"; // TAG for debug
 int led_state = 0;
-
+#define SERVER_IP "192.168.0.6"
+#define SERVER_PORT 8080
 #define EXAMPLE_ESP_WIFI_SSID CONFIG_ESP_WIFI_SSID
 #define EXAMPLE_ESP_WIFI_PASS CONFIG_ESP_WIFI_PASSWORD
 #define EXAMPLE_ESP_MAXIMUM_RETRY CONFIG_ESP_MAXIMUM_RETRY
@@ -236,6 +237,46 @@ httpd_handle_t setup_server(void)
     return server;
 }
 
+void tcp_client_task(void *pvParameters) {
+    char addr_str[128];
+    int addr_family;
+    int ip_protocol;
+
+    struct sockaddr_in dest_addr;
+    dest_addr.sin_addr.s_addr = inet_addr(SERVER_IP);
+    dest_addr.sin_family = AF_INET;
+    dest_addr.sin_port = htons(SERVER_PORT);
+    addr_family = AF_INET;
+    ip_protocol = 6;
+    inet_pton ( AF_INET , SERVER_IP , & dest_addr.sin_addr.s_addr ) ; 
+    int sock = socket(addr_family, SOCK_STREAM, ip_protocol);
+    if (sock < 0) {
+        ESP_LOGE(TAG, "Unable to create socket: errno %d", errno);
+        vTaskDelete(NULL);
+        return;
+    }
+    ESP_LOGI(TAG, "Socket created");
+
+    int err = connect(sock, (struct sockaddr_in *)&dest_addr, sizeof(dest_addr));
+    if (err != 0) {
+        ESP_LOGE(TAG, "Socket unable to connect: errno %d", errno);
+        vTaskDelete(NULL);
+        return;
+    }
+    ESP_LOGI(TAG, "Successfully connected");
+
+    const char *message = "Hello, TCP Server!";
+    err = send(sock, message, strlen(message)+1, 0);
+    if (err < 0) {
+        ESP_LOGE(TAG, "Error occurred during sending: errno %d", errno);
+    }
+
+    shutdown(sock, 0);
+    close(sock);
+
+    vTaskDelete(NULL);
+}
+
 void app_main()
 {
     // Initialize NVS
@@ -249,12 +290,12 @@ void app_main()
 
     ESP_LOGI(TAG, "ESP_WIFI_MODE_STA");
     connect_wifi();
-
+    xTaskCreate(tcp_client_task, "tcp_client", 4096, NULL, 5, NULL);
     // GPIO initialization
-    gpio_reset_pin(LED_PIN);
-    gpio_set_direction(LED_PIN, GPIO_MODE_OUTPUT);
+    //gpio_reset_pin(LED_PIN);
+    //gpio_set_direction(LED_PIN, GPIO_MODE_OUTPUT);
 
-    led_state = 0;
-    ESP_LOGI(TAG, "LED Control Web Server is running ... ...\n");
-    setup_server();
+    //led_state = 0;
+    //ESP_LOGI(TAG, "LED Control Web Server is running ... ...\n");
+    //setup_server();
 }
